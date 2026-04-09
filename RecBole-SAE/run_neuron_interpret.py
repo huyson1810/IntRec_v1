@@ -454,13 +454,45 @@ def _build_labelling_prompt(
     ]
 
 
-def _clean_label(raw: str) -> str:
+def _clean_label_0(raw: str) -> str:
     """Strip punctuation artefacts and keep only the first line."""
     label = raw.splitlines()[0].strip()
     # Remove any leading/trailing quotes the model might add
     label = label.strip("\"'`")
     return label if label else "unlabelled"
 
+def _clean_label(raw: str) -> str:
+    """
+    Clean the model output into a compact label.
+
+    - Strips common chain-of-thought wrappers like <think>...</think>
+    - Keeps the first non-empty line
+    - Removes surrounding quotes/backticks
+    """
+    if raw is None:
+        return "unlabelled"
+
+    text = str(raw).strip()
+
+    # Remove <think>...</think> blocks if present
+    # (some models emit these even when prompted not to)
+    while True:
+        start = text.find("<think>")
+        end = text.find("</think>")
+        if start != -1 and end != -1 and end > start:
+            text = (text[:start] + text[end + len("</think>"):]).strip()
+        else:
+            break
+
+    # If the model outputs "<think>" without closing tag, drop that line
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    lines = [ln for ln in lines if ln not in ("<think>", "</think>")]
+
+    if not lines:
+        return "unlabelled"
+
+    label = lines[0].strip().strip("\"'`")
+    return label if label else "unlabelled"
 
 # Evaluate the SAE model
 def evaluate_sae(
@@ -778,11 +810,14 @@ def main() -> None:
         sub = all_prompts[i:i+chunk]
         logger.info(f"  LLM chunk {i//chunk + 1} / {((len(all_prompts)-1)//chunk + 1)}  "
                     f"({len(sub)} prompts)")
-        raw_labels.extend(llm.label_batch(sub,args.max_new_tokens)) 
+        raw_labels.extend(llm.label_batch(sub,max_new_tokens=args.max_new_tokens)) 
         
         # print for debugging
-        print(f"sub_prompts: {sub}")
-        print(f"raw_labels: {raw_labels}")
+        # print(f"sub_prompts: {sub}")
+        # Lightweight label preview (first few only)
+        logger.info(
+            "  labels preview: " + " | ".join(lbl.strip()[:100] for lbl in raw_labels[-min(3, len(sub)):])
+        )
 
         # help reduce fragmentation / peak usage between chunks
         if torch.cuda.is_available():
