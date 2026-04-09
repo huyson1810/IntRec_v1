@@ -81,6 +81,14 @@ def _parse_args() -> argparse.Namespace:
         "--checkpoint", required=True,
         help="Path to trained RecBole base-model .pth"
     )
+
+    # --- data path override (for different environments) ---
+    p.add_argument(
+        "--data_path", default=None,
+        help="Override dataset path (useful for Kaggle/Colab/different environments). "
+             "If not provided, uses path from checkpoint config."
+    )
+
     # --- SAE source (mutually exclusive: train OR load) ---
     g = p.add_mutually_exclusive_group()
     g.add_argument(
@@ -540,7 +548,15 @@ def main() -> None:
     logger.info("── Step 1: Loading base model ──────────────────")
     from recbole_sae.probe import probe_model
 
-    data        = probe_model(args.checkpoint)
+    # Override data_path if provided
+    if args.data_path:
+        logger.info(f"Using custom data_path: {args.data_path}")
+        # Pass data_path to probe_model (check if it accepts this parameter)
+        data = probe_model(args.checkpoint, data_path=args.data_path)
+    else:
+        data = probe_model(args.checkpoint)
+
+    # data        = probe_model(args.checkpoint)
     model_name  = data["model_name"]
     item_embs   = data["item_embeddings"]   # [n_items, dim]
     dataset     = data["dataset"]

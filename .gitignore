@@ -5,3 +5,4 @@ RecBole-SAE/saved/*.pth
 # Or more broadly, ignore all results and saved model files
 RecBole-SAE/results/
 RecBole-SAE/saved/
+RecBole-SAE/wandb/
