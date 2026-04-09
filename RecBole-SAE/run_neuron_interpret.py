@@ -55,7 +55,7 @@ import logging
 import os
 import time
 from typing import Dict, List, Optional, Tuple
-
+import gc
 import numpy as np
 import torch
 import yaml
@@ -404,13 +404,27 @@ class _HuggingFaceBackend(_LLMBackend):
 
         # Aggressive cleanup to avoid fragmentation over many iterations
         del outputs
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-            torch.cuda.empty_cache()
-        gc.collect()
+        clear_memory()
+
+        # if torch.cuda.is_available():
+        #     torch.cuda.synchronize()
+        #     torch.cuda.empty_cache()
+        # gc.collect()
 
         return texts
 
+def clear_memory():
+    # 1. Clear Python's garbage collector (CPU RAM)
+    gc.collect()
+    
+    # 2. Clear PyTorch's CUDA cache (GPU VRAM)
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()        
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+        print(f"GPU Memory usage: {torch.cuda.memory_allocated() / 1024**2:.2f} MB allocated")
+    
+    print("CPU and GPU memory cleared.")
 
 class _OpenAIBackend(_LLMBackend):
     def __init__(self, model_name: str, api_key: str, base_url: Optional[str]):
