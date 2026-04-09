@@ -79,7 +79,7 @@ def probe_model_0(checkpoint_path: str) -> Dict:
 from typing import Optional
 import os
 
-def probe_model_0(checkpoint_path: str,  data_path: Optional[str] = None) -> Dict:
+def probe_model(checkpoint_path: str,  data_path: Optional[str] = None) -> Dict:
     """
     Load a trained RecBole checkpoint and extract everything the SAE needs.
 
