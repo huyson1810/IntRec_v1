@@ -96,8 +96,10 @@ def probe_model(checkpoint_path: str,  data_path: Optional[str] = None) -> Dict:
         dataset / model / config / train_data / valid_data / test_data
     """
     
+    # PyTorch 2.6+ on Kaggle defaults weights_only=True; RecBole checkpoints
+    # require full pickle load to access config, etc. Only do this for trusted files.
     import torch
-    ckpt = torch.load(checkpoint_path, map_location="cpu")
+    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
 
     # RecBole checkpoints usually store config in ckpt["config"]
     if data_path is not None:
