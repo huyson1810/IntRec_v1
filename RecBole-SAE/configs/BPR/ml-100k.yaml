@@ -1,0 +1,31 @@
+# ─── BPR base-model config ────────────────────────────────────────────────────
+# Matches RecBole's own config format exactly.
+# Run with: python run_recbole.py --config_files configs/BPR/ml-100k.yaml
+
+model: BPR
+dataset: ml-100k
+data_path: dataset/
+
+embedding_size: 64
+train_neg_sample_args:
+  distribution: uniform
+  sample_num: 1
+
+# Training
+epochs: 200
+train_batch_size: 2048
+learner: adam
+learning_rate: 0.001
+eval_step: 10
+stopping_step: 20
+
+# Evaluation
+eval_args:
+  split:
+    RS: [0.8, 0.1, 0.1]
+  group_by: user
+  order: RO
+  mode: full
+metrics: [Recall, MRR, NDCG, Hit, Precision]
+topk: [10]
+valid_metric: MRR@10

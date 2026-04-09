@@ -1,0 +1,13 @@
+# Core
+recbole>=1.2.0
+torch>=1.13.0
+numpy
+pyyaml
+
+# LLM backends (install the one you need)
+# Local HuggingFace:
+transformers>=4.40
+accelerate
+
+# OpenAI API:
+# openai>=1.0

@@ -1,0 +1,275 @@
+Wed 08 Apr 2026 23:22:10 INFO  ['../RecBole/run_recbole.py', '--model', 'LightGCN', '--dataset', 'amazon-grocery', '--config_files', 'configs/LightGCN/amazon-grocery.yaml', '--data_path=/content/drive/MyDrive/Colab_Notebooks/CIKMv3/RecBole/dataset/', "--load_col={'inter': ['user_id', 'item_id', 'timestamp']}"]
+Wed 08 Apr 2026 23:22:10 INFO  
+General Hyper Parameters:
+gpu_id = 0
+use_gpu = True
+seed = 2020
+state = INFO
+reproducibility = True
+data_path = /content/drive/MyDrive/Colab_Notebooks/CIKMv3/RecBole/dataset/amazon-grocery
+checkpoint_dir = saved
+show_progress = True
+save_dataset = True
+dataset_save_path = saved_data/
+save_dataloaders = True
+dataloaders_save_path = saved_dataloader/
+log_wandb = False
+
+Training Hyper Parameters:
+epochs = 100
+train_batch_size = 4096
+learner = adam
+learning_rate = 0.001
+train_neg_sample_args = {'distribution': 'uniform', 'sample_num': 1, 'alpha': 1.0, 'dynamic': False, 'candidate_num': 0}
+eval_step = 10
+stopping_step = 30
+clip_grad_norm = None
+weight_decay = 0.0
+loss_decimal_place = 4
+
+Evaluation Hyper Parameters:
+eval_args = {'split': {'RS': [0.8, 0.1, 0.1]}, 'order': 'TO', 'group_by': 'user', 'mode': {'valid': 'full', 'test': 'full'}}
+repeatable = False
+metrics = ['Recall', 'MRR', 'NDCG', 'Hit', 'Precision']
+topk = [10]
+valid_metric = NDCG@10
+valid_metric_bigger = True
+eval_batch_size = 4096
+metric_decimal_place = 4
+
+Dataset Hyper Parameters:
+field_separator = 	
+seq_separator =  
+USER_ID_FIELD = user_id
+ITEM_ID_FIELD = item_id
+RATING_FIELD = rating
+TIME_FIELD = timestamp
+seq_len = None
+LABEL_FIELD = label
+threshold = None
+NEG_PREFIX = neg_
+load_col = {'inter': ['user_id', 'item_id', 'timestamp']}
+unload_col = None
+unused_col = None
+additional_feat_suffix = None
+rm_dup_inter = None
+val_interval = None
+filter_inter_by_user_or_item = True
+user_inter_num_interval = [0,inf)
+item_inter_num_interval = [0,inf)
+alias_of_user_id = None
+alias_of_item_id = None
+alias_of_entity_id = None
+alias_of_relation_id = None
+preload_weight = None
+normalize_field = None
+normalize_all = None
+ITEM_LIST_LENGTH_FIELD = item_length
+LIST_SUFFIX = _list
+MAX_ITEM_LIST_LENGTH = 50
+POSITION_FIELD = position_id
+HEAD_ENTITY_ID_FIELD = head_id
+TAIL_ENTITY_ID_FIELD = tail_id
+RELATION_ID_FIELD = relation_id
+ENTITY_ID_FIELD = entity_id
+benchmark_filename = None
+
+Other Hyper Parameters: 
+worker = 0
+wandb_project = recbole
+shuffle = True
+require_pow = False
+enable_amp = False
+enable_scaler = False
+transform = None
+embedding_size = 64
+n_layers = 2
+reg_weight = 0.0001
+numerical_features = []
+discretization = None
+kg_reverse_r = False
+entity_kg_num_interval = [0,inf)
+relation_kg_num_interval = [0,inf)
+MODEL_TYPE = ModelType.GENERAL
+MODEL_INPUT_TYPE = InputType.PAIRWISE
+eval_type = EvaluatorType.RANKING
+single_spec = True
+local_rank = 0
+device = cuda
+valid_neg_sample_args = {'distribution': 'uniform', 'sample_num': 'none'}
+test_neg_sample_args = {'distribution': 'uniform', 'sample_num': 'none'}
+
+
+Wed 08 Apr 2026 23:22:29 INFO  Saving filtered dataset into [saved/amazon-grocery-Dataset.pth]
+Wed 08 Apr 2026 23:22:33 INFO  amazon-grocery
+The number of users: 113593
+Average actions of users: 8.854646453975633
+The number of items: 39505
+Average actions of items: 25.461143175374644
+The number of inters: 1005817
+The sparsity of the dataset: 99.97758620806647%
+Remain Fields: ['user_id', 'item_id', 'timestamp']
+Wed 08 Apr 2026 23:22:43 INFO  Saving split dataloaders into: [saved/amazon-grocery-for-LightGCN-dataloader.pth]
+Wed 08 Apr 2026 23:23:30 INFO  [Training]: train_batch_size = [4096] train_neg_sample_args: [{'distribution': 'uniform', 'sample_num': 1, 'alpha': 1.0, 'dynamic': False, 'candidate_num': 0}]
+Wed 08 Apr 2026 23:23:30 INFO  [Evaluation]: eval_batch_size = [4096] eval_args: [{'split': {'RS': [0.8, 0.1, 0.1]}, 'order': 'TO', 'group_by': 'user', 'mode': {'valid': 'full', 'test': 'full'}}]
+Wed 08 Apr 2026 23:24:07 INFO  LightGCN(
+  (user_embedding): Embedding(113593, 64)
+  (item_embedding): Embedding(39505, 64)
+  (mf_loss): BPRLoss()
+  (reg_loss): EmbLoss()
+)
+Trainable parameters: 9798272
+Wed 08 Apr 2026 23:24:07 INFO  FLOPs: 0.0
+Wed 08 Apr 2026 23:24:33 INFO  epoch 0 training [time: 15.00s, train loss: 110.6125]
+Wed 08 Apr 2026 23:24:48 INFO  epoch 1 training [time: 14.45s, train loss: 77.6032]
+Wed 08 Apr 2026 23:25:02 INFO  epoch 2 training [time: 14.54s, train loss: 70.3992]
+Wed 08 Apr 2026 23:25:17 INFO  epoch 3 training [time: 14.65s, train loss: 67.3078]
+Wed 08 Apr 2026 23:25:32 INFO  epoch 4 training [time: 14.85s, train loss: 64.8084]
+Wed 08 Apr 2026 23:25:47 INFO  epoch 5 training [time: 15.05s, train loss: 62.2222]
+Wed 08 Apr 2026 23:26:02 INFO  epoch 6 training [time: 15.25s, train loss: 59.7937]
+Wed 08 Apr 2026 23:26:17 INFO  epoch 7 training [time: 15.35s, train loss: 57.3051]
+Wed 08 Apr 2026 23:26:33 INFO  epoch 8 training [time: 15.12s, train loss: 55.1568]
+Wed 08 Apr 2026 23:26:48 INFO  epoch 9 training [time: 15.04s, train loss: 52.9974]
+Wed 08 Apr 2026 23:29:35 INFO  epoch 9 evaluating [time: 167.46s, valid_score: 0.035700]
+Wed 08 Apr 2026 23:29:35 INFO  valid result: 
+recall@10 : 0.0517    mrr@10 : 0.031    ndcg@10 : 0.0357    hit@10 : 0.0529    precision@10 : 0.0053
+Wed 08 Apr 2026 23:29:36 INFO  Saving current: saved/LightGCN-Apr-08-2026_23-24-12.pth
+Wed 08 Apr 2026 23:29:52 INFO  epoch 10 training [time: 15.69s, train loss: 50.9778]
+Wed 08 Apr 2026 23:30:07 INFO  epoch 11 training [time: 15.47s, train loss: 49.0133]
+Wed 08 Apr 2026 23:30:22 INFO  epoch 12 training [time: 15.14s, train loss: 47.2609]
+Wed 08 Apr 2026 23:30:37 INFO  epoch 13 training [time: 15.05s, train loss: 45.4521]
+Wed 08 Apr 2026 23:30:52 INFO  epoch 14 training [time: 15.04s, train loss: 43.9397]
+Wed 08 Apr 2026 23:31:07 INFO  epoch 15 training [time: 15.06s, train loss: 42.4024]
+Wed 08 Apr 2026 23:31:23 INFO  epoch 16 training [time: 15.34s, train loss: 40.6891]
+Wed 08 Apr 2026 23:31:38 INFO  epoch 17 training [time: 15.30s, train loss: 39.1557]
+Wed 08 Apr 2026 23:31:53 INFO  epoch 18 training [time: 15.27s, train loss: 37.6296]
+Wed 08 Apr 2026 23:32:08 INFO  epoch 19 training [time: 15.19s, train loss: 36.1517]
+Wed 08 Apr 2026 23:34:54 INFO  epoch 19 evaluating [time: 165.38s, valid_score: 0.043000]
+Wed 08 Apr 2026 23:34:54 INFO  valid result: 
+recall@10 : 0.0609    mrr@10 : 0.0379    ndcg@10 : 0.043    hit@10 : 0.0628    precision@10 : 0.0063
+Wed 08 Apr 2026 23:34:54 INFO  Saving current: saved/LightGCN-Apr-08-2026_23-24-12.pth
+Wed 08 Apr 2026 23:35:10 INFO  epoch 20 training [time: 15.73s, train loss: 34.6828]
+Wed 08 Apr 2026 23:35:26 INFO  epoch 21 training [time: 15.75s, train loss: 33.2989]
+Wed 08 Apr 2026 23:35:41 INFO  epoch 22 training [time: 15.22s, train loss: 31.7918]
+Wed 08 Apr 2026 23:35:56 INFO  epoch 23 training [time: 15.14s, train loss: 30.4881]
+Wed 08 Apr 2026 23:36:11 INFO  epoch 24 training [time: 15.14s, train loss: 29.1876]
+Wed 08 Apr 2026 23:36:26 INFO  epoch 25 training [time: 15.12s, train loss: 27.8297]
+Wed 08 Apr 2026 23:36:42 INFO  epoch 26 training [time: 15.18s, train loss: 26.6811]
+Wed 08 Apr 2026 23:36:57 INFO  epoch 27 training [time: 15.17s, train loss: 25.3851]
+Wed 08 Apr 2026 23:37:12 INFO  epoch 28 training [time: 15.09s, train loss: 24.2519]
+Wed 08 Apr 2026 23:37:27 INFO  epoch 29 training [time: 15.04s, train loss: 23.1056]
+Wed 08 Apr 2026 23:40:15 INFO  epoch 29 evaluating [time: 168.29s, valid_score: 0.045800]
+Wed 08 Apr 2026 23:40:15 INFO  valid result: 
+recall@10 : 0.0664    mrr@10 : 0.04    ndcg@10 : 0.0458    hit@10 : 0.0686    precision@10 : 0.0069
+Wed 08 Apr 2026 23:40:16 INFO  Saving current: saved/LightGCN-Apr-08-2026_23-24-12.pth
+Wed 08 Apr 2026 23:40:32 INFO  epoch 30 training [time: 16.48s, train loss: 22.1604]
+Wed 08 Apr 2026 23:40:47 INFO  epoch 31 training [time: 15.47s, train loss: 21.0150]
+Wed 08 Apr 2026 23:41:03 INFO  epoch 32 training [time: 15.12s, train loss: 20.0574]
+Wed 08 Apr 2026 23:41:18 INFO  epoch 33 training [time: 15.01s, train loss: 19.1668]
+Wed 08 Apr 2026 23:41:33 INFO  epoch 34 training [time: 15.02s, train loss: 18.0722]
+Wed 08 Apr 2026 23:41:48 INFO  epoch 35 training [time: 15.06s, train loss: 17.4188]
+Wed 08 Apr 2026 23:42:03 INFO  epoch 36 training [time: 15.11s, train loss: 16.6177]
+Wed 08 Apr 2026 23:42:18 INFO  epoch 37 training [time: 15.12s, train loss: 15.9438]
+Wed 08 Apr 2026 23:42:33 INFO  epoch 38 training [time: 15.09s, train loss: 15.2124]
+Wed 08 Apr 2026 23:42:48 INFO  epoch 39 training [time: 15.07s, train loss: 14.5111]
+Wed 08 Apr 2026 23:45:34 INFO  epoch 39 evaluating [time: 165.46s, valid_score: 0.049200]
+Wed 08 Apr 2026 23:45:34 INFO  valid result: 
+recall@10 : 0.0724    mrr@10 : 0.0427    ndcg@10 : 0.0492    hit@10 : 0.0747    precision@10 : 0.0075
+Wed 08 Apr 2026 23:45:34 INFO  Saving current: saved/LightGCN-Apr-08-2026_23-24-12.pth
+Wed 08 Apr 2026 23:45:50 INFO  epoch 40 training [time: 15.94s, train loss: 13.8684]
+Wed 08 Apr 2026 23:46:05 INFO  epoch 41 training [time: 15.45s, train loss: 13.3055]
+Wed 08 Apr 2026 23:46:20 INFO  epoch 42 training [time: 15.03s, train loss: 12.6831]
+Wed 08 Apr 2026 23:46:35 INFO  epoch 43 training [time: 15.04s, train loss: 12.2677]
+Wed 08 Apr 2026 23:46:50 INFO  epoch 44 training [time: 14.99s, train loss: 11.7395]
+Wed 08 Apr 2026 23:47:05 INFO  epoch 45 training [time: 15.07s, train loss: 11.2284]
+Wed 08 Apr 2026 23:47:21 INFO  epoch 46 training [time: 15.16s, train loss: 10.7528]
+Wed 08 Apr 2026 23:47:36 INFO  epoch 47 training [time: 15.18s, train loss: 10.3260]
+Wed 08 Apr 2026 23:47:51 INFO  epoch 48 training [time: 15.12s, train loss: 9.8697]
+Wed 08 Apr 2026 23:48:06 INFO  epoch 49 training [time: 15.10s, train loss: 9.5365]
+Wed 08 Apr 2026 23:50:52 INFO  epoch 49 evaluating [time: 165.53s, valid_score: 0.052300]
+Wed 08 Apr 2026 23:50:52 INFO  valid result: 
+recall@10 : 0.0773    mrr@10 : 0.0452    ndcg@10 : 0.0523    hit@10 : 0.0796    precision@10 : 0.008
+Wed 08 Apr 2026 23:50:52 INFO  Saving current: saved/LightGCN-Apr-08-2026_23-24-12.pth
+Wed 08 Apr 2026 23:51:08 INFO  epoch 50 training [time: 16.51s, train loss: 9.1484]
+Wed 08 Apr 2026 23:51:24 INFO  epoch 51 training [time: 15.41s, train loss: 8.8030]
+Wed 08 Apr 2026 23:51:39 INFO  epoch 52 training [time: 15.11s, train loss: 8.5362]
+Wed 08 Apr 2026 23:51:54 INFO  epoch 53 training [time: 15.04s, train loss: 8.1590]
+Wed 08 Apr 2026 23:52:09 INFO  epoch 54 training [time: 15.02s, train loss: 7.7974]
+Wed 08 Apr 2026 23:52:24 INFO  epoch 55 training [time: 15.07s, train loss: 7.5587]
+Wed 08 Apr 2026 23:52:39 INFO  epoch 56 training [time: 15.12s, train loss: 7.3513]
+Wed 08 Apr 2026 23:52:54 INFO  epoch 57 training [time: 15.14s, train loss: 7.0451]
+Wed 08 Apr 2026 23:53:10 INFO  epoch 58 training [time: 15.12s, train loss: 6.7316]
+Wed 08 Apr 2026 23:53:25 INFO  epoch 59 training [time: 15.09s, train loss: 6.6126]
+Wed 08 Apr 2026 23:56:11 INFO  epoch 59 evaluating [time: 165.90s, valid_score: 0.055700]
+Wed 08 Apr 2026 23:56:11 INFO  valid result: 
+recall@10 : 0.0824    mrr@10 : 0.0481    ndcg@10 : 0.0557    hit@10 : 0.0848    precision@10 : 0.0086
+Wed 08 Apr 2026 23:56:11 INFO  Saving current: saved/LightGCN-Apr-08-2026_23-24-12.pth
+Wed 08 Apr 2026 23:56:27 INFO  epoch 60 training [time: 15.88s, train loss: 6.2509]
+Wed 08 Apr 2026 23:56:42 INFO  epoch 61 training [time: 15.52s, train loss: 6.1595]
+Wed 08 Apr 2026 23:56:57 INFO  epoch 62 training [time: 15.13s, train loss: 5.8950]
+Wed 08 Apr 2026 23:57:12 INFO  epoch 63 training [time: 15.02s, train loss: 5.7311]
+Wed 08 Apr 2026 23:57:27 INFO  epoch 64 training [time: 15.00s, train loss: 5.5081]
+Wed 08 Apr 2026 23:57:43 INFO  epoch 65 training [time: 15.04s, train loss: 5.3219]
+Wed 08 Apr 2026 23:57:58 INFO  epoch 66 training [time: 15.25s, train loss: 5.1578]
+Wed 08 Apr 2026 23:58:13 INFO  epoch 67 training [time: 15.21s, train loss: 4.9897]
+Wed 08 Apr 2026 23:58:28 INFO  epoch 68 training [time: 15.14s, train loss: 4.8141]
+Wed 08 Apr 2026 23:58:43 INFO  epoch 69 training [time: 15.11s, train loss: 4.6649]
+Thu 09 Apr 2026 00:01:28 INFO  epoch 69 evaluating [time: 164.41s, valid_score: 0.057900]
+Thu 09 Apr 2026 00:01:28 INFO  valid result: 
+recall@10 : 0.0862    mrr@10 : 0.0498    ndcg@10 : 0.0579    hit@10 : 0.0886    precision@10 : 0.0089
+Thu 09 Apr 2026 00:01:28 INFO  Saving current: saved/LightGCN-Apr-08-2026_23-24-12.pth
+Thu 09 Apr 2026 00:01:44 INFO  epoch 70 training [time: 15.60s, train loss: 4.5857]
+Thu 09 Apr 2026 00:02:00 INFO  epoch 71 training [time: 15.98s, train loss: 4.4342]
+Thu 09 Apr 2026 00:02:15 INFO  epoch 72 training [time: 15.17s, train loss: 4.2643]
+Thu 09 Apr 2026 00:02:30 INFO  epoch 73 training [time: 15.11s, train loss: 4.2038]
+Thu 09 Apr 2026 00:02:45 INFO  epoch 74 training [time: 15.04s, train loss: 4.1121]
+Thu 09 Apr 2026 00:03:00 INFO  epoch 75 training [time: 15.07s, train loss: 3.9373]
+Thu 09 Apr 2026 00:03:15 INFO  epoch 76 training [time: 15.17s, train loss: 3.8206]
+Thu 09 Apr 2026 00:03:30 INFO  epoch 77 training [time: 15.19s, train loss: 3.7205]
+Thu 09 Apr 2026 00:03:46 INFO  epoch 78 training [time: 15.14s, train loss: 3.6062]
+Thu 09 Apr 2026 00:04:01 INFO  epoch 79 training [time: 15.07s, train loss: 3.5086]
+Thu 09 Apr 2026 00:06:46 INFO  epoch 79 evaluating [time: 165.15s, valid_score: 0.060000]
+Thu 09 Apr 2026 00:06:46 INFO  valid result: 
+recall@10 : 0.089    mrr@10 : 0.0517    ndcg@10 : 0.06    hit@10 : 0.0914    precision@10 : 0.0092
+Thu 09 Apr 2026 00:06:46 INFO  Saving current: saved/LightGCN-Apr-08-2026_23-24-12.pth
+Thu 09 Apr 2026 00:07:02 INFO  epoch 80 training [time: 16.08s, train loss: 3.4391]
+Thu 09 Apr 2026 00:07:18 INFO  epoch 81 training [time: 15.49s, train loss: 3.3727]
+Thu 09 Apr 2026 00:07:33 INFO  epoch 82 training [time: 15.13s, train loss: 3.2564]
+Thu 09 Apr 2026 00:07:48 INFO  epoch 83 training [time: 15.05s, train loss: 3.1611]
+Thu 09 Apr 2026 00:08:03 INFO  epoch 84 training [time: 15.04s, train loss: 3.0464]
+Thu 09 Apr 2026 00:08:18 INFO  epoch 85 training [time: 15.06s, train loss: 3.0351]
+Thu 09 Apr 2026 00:08:33 INFO  epoch 86 training [time: 15.20s, train loss: 2.9222]
+Thu 09 Apr 2026 00:08:48 INFO  epoch 87 training [time: 15.21s, train loss: 2.8351]
+Thu 09 Apr 2026 00:09:04 INFO  epoch 88 training [time: 15.13s, train loss: 2.8059]
+Thu 09 Apr 2026 00:09:19 INFO  epoch 89 training [time: 15.13s, train loss: 2.7044]
+Thu 09 Apr 2026 00:12:05 INFO  epoch 89 evaluating [time: 166.45s, valid_score: 0.062300]
+Thu 09 Apr 2026 00:12:05 INFO  valid result: 
+recall@10 : 0.092    mrr@10 : 0.0537    ndcg@10 : 0.0623    hit@10 : 0.0944    precision@10 : 0.0095
+Thu 09 Apr 2026 00:12:06 INFO  Saving current: saved/LightGCN-Apr-08-2026_23-24-12.pth
+Thu 09 Apr 2026 00:12:21 INFO  epoch 90 training [time: 15.56s, train loss: 2.6905]
+Thu 09 Apr 2026 00:12:37 INFO  epoch 91 training [time: 15.58s, train loss: 2.5790]
+Thu 09 Apr 2026 00:12:52 INFO  epoch 92 training [time: 15.15s, train loss: 2.5210]
+Thu 09 Apr 2026 00:13:07 INFO  epoch 93 training [time: 15.09s, train loss: 2.4825]
+Thu 09 Apr 2026 00:13:22 INFO  epoch 94 training [time: 15.15s, train loss: 2.4218]
+Thu 09 Apr 2026 00:13:37 INFO  epoch 95 training [time: 15.13s, train loss: 2.3484]
+Thu 09 Apr 2026 00:13:52 INFO  epoch 96 training [time: 15.21s, train loss: 2.2901]
+Thu 09 Apr 2026 00:14:08 INFO  epoch 97 training [time: 15.17s, train loss: 2.2397]
+Thu 09 Apr 2026 00:14:23 INFO  epoch 98 training [time: 15.11s, train loss: 2.2168]
+Thu 09 Apr 2026 00:14:38 INFO  epoch 99 training [time: 15.09s, train loss: 2.1669]
+Thu 09 Apr 2026 00:17:23 INFO  epoch 99 evaluating [time: 165.32s, valid_score: 0.063900]
+Thu 09 Apr 2026 00:17:23 INFO  valid result: 
+recall@10 : 0.0945    mrr@10 : 0.0551    ndcg@10 : 0.0639    hit@10 : 0.0968    precision@10 : 0.0097
+Thu 09 Apr 2026 00:17:24 INFO  Saving current: saved/LightGCN-Apr-08-2026_23-24-12.pth
+Thu 09 Apr 2026 00:17:24 INFO  Loading model structure and parameters from saved/LightGCN-Apr-08-2026_23-24-12.pth
+Thu 09 Apr 2026 00:20:15 INFO  The running environment of this training is as follows:
++-------------+----------------+
+| Environment |     Usage      |
++=============+================+
+| CPU         |    43.50 %     |
++-------------+----------------+
+| GPU         | 0.64 G/14.56 G |
++-------------+----------------+
+| Memory      | 3.19 G/12.67 G |
++-------------+----------------+
+Thu 09 Apr 2026 00:20:15 INFO  best valid : OrderedDict({'recall@10': 0.0945, 'mrr@10': 0.0551, 'ndcg@10': 0.0639, 'hit@10': 0.0968, 'precision@10': 0.0097})
+Thu 09 Apr 2026 00:20:15 INFO  test result: OrderedDict({'recall@10': 0.0508, 'mrr@10': 0.0241, 'ndcg@10': 0.0301, 'hit@10': 0.0524, 'precision@10': 0.0053})

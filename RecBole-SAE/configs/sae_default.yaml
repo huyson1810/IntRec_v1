@@ -1,0 +1,49 @@
+# ─── RecBole-SAE configuration ────────────────────────────────────────────────
+# This file is loaded ON TOP of a base-model RecBole config.
+# RecBole config keys (model, dataset, data_path, embedding_size …) live in
+# the per-model configs under configs/{BPR,LightGCN,SASRec}/
+# Only RecBole-SAE-specific hyperparameters live here.
+
+# ─── SAE architecture (§3.2) ──────────────────────────────────────────────────
+sae_scale: 16           # latent_dim = embedding_size * sae_scale  → 1024 default
+sae_k: 8                # Top-K active latents per user/item
+sae_epochs: 200         # was 50 — larger batch means fewer steps/epoch, need more epochs
+sae_lr: 5.0e-5
+sae_batch_size: 256     # was 8 — critical fix: batch=8 causes dead neurons within 3 epochs
+sae_alpha: 0.03125      # 1/32, weight of auxiliary dead-latent loss
+sae_dead_window: 400    # steps before a latent is considered dead
+normalize_inputs: true  # L2-normalise each embedding before SAE — fixes LightGCN norm variance
+
+# ─── LLM interpretation (§3.3) ────────────────────────────────────────────────
+# Backend: "huggingface" (local) | "openai" (API)
+llm_backend: "huggingface"
+
+# Default: Qwen2.5-1.5B-Instruct — 1.5B params, fits in 3 GB RAM at fp16,
+# fast on CPU (30s/batch vs 30min for Llama-3-8B), good enough for 2-4 word labels.
+# Upgrade to Llama-3-8B-Instruct if you have a GPU with ≥16 GB VRAM.
+llm_model: "Qwen/Qwen2.5-1.5B-Instruct"
+
+# HuggingFace: number of prompts per pipeline forward pass
+# Increase if you have a high-VRAM GPU; lower if OOM
+hf_batch_size: 32
+
+# OpenAI (uncomment and fill if using llm_backend: openai)
+# llm_model: "gpt-4o-mini"
+# openai_api_key: "sk-..."
+# openai_base_url: "https://api.openai.com/v1"
+
+# Throttle between calls (OpenAI only — not needed for HuggingFace)
+llm_sleep: 0.0
+
+# How many cases to use per latent (N in the paper; top-2N are fetched)
+n_cases: 5
+
+# Human-readable dataset descriptions shown in prompts
+item_category: "items"   # e.g. "grocery food", "movies", "music tracks"
+item_name: "item"        # e.g. "product", "movie", "song"
+
+# Confidence threshold for a latent to be counted as "verified"
+confidence_threshold: 0.8
+
+# ─── Evaluation ───────────────────────────────────────────────────────────────
+ndcg_ks: [10, 20]

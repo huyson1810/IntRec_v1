@@ -1,0 +1,33 @@
+# ─── LightGCN base-model config ───────────────────────────────────────────────
+model: LightGCN
+dataset: amazon-grocery
+data_path: dataset/
+
+embedding_size: 64
+n_layers: 2
+reg_weight: 1.0e-4
+require_pow: False
+
+epochs: 100
+train_batch_size: 4096
+learner: adam
+learning_rate: 0.001
+eval_step: 10
+stopping_step: 30
+
+eval_args:
+  split:
+    RS: [0.8, 0.1, 0.1]
+  group_by: user
+  order: TO
+  mode: full
+metrics: [Recall, MRR, NDCG, Hit, Precision]
+topk: [10]
+valid_metric: NDCG@10
+
+show_progress: True
+save_dataset: True
+dataset_save_path: saved_data/
+save_dataloaders: True
+dataloaders_save_path: saved_dataloader/
+log_wandb : False
