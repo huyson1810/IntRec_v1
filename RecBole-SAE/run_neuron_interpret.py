@@ -371,6 +371,23 @@ class _HuggingFaceBackend(_LLMBackend):
         The pipeline tokenizes, pads, and processes them together — a single
         forward pass per micro-batch of size self._hf_batch_size.
         """
+        
+        # Convert chat messages -> a single prompt string using the model's chat template (if present)    
+        prompts: List[str] = []
+        for msgs in all_messages:
+            if hasattr(tokenizer, "apply_chat_template"):
+                prompts.append(
+                    tokenizer.apply_chat_template(
+                        msgs,
+                        tokenize=False,
+                        add_generation_prompt=True,
+                    )
+                )
+            else:
+                # fallback: simple concat
+                prompts.append("\n".join(f"{m['role']}: {m['content']}" for m in msgs))
+
+        # Run the pipeline in batches. The pipeline handles tokenization, padding, and batching internally.        
         outputs = self._pipe(
             all_messages,
             max_new_tokens=max_new_tokens,
@@ -434,12 +451,12 @@ def _build_labelling_prompt(
     """
     system = (
         f"You are analysing neurons in a recommendation model that recommends {item_category}. "
-        f"Each neuron activates strongly for {item_category} that share a specific common characteristic. "
-        f"Your goal is to identify the keyword set of the most prominent characteristics that connects these {item_category} (especially the highly activated items at the top of the list). "
-        f"Respond only a 3-5 word label with your confidence scores (in the range from 0 to 10) based on the highly activated items , no explanation."
-        f"Basically, consider this task as a classification task, and use consistent terms to avoid different synonyms for one concept (e.g do not use 'sugary', 'sweet' and 'sweetness' for the same concept) !"   
-        f"Example: 'Luxurious (confidence: 8), High Quality (confidence: 6), Popular (confidence: 0.4)' or 'Cheap price (confidence: 9), Fish (confidence: 7), High Protein (confidence: 5)'. \
-        Do not output <think> blocks or any internal reasoning. Output only the final labels."   
+        f"Each neuron activates strongly for {item_category} that share a specific common concept. "
+        f"Your goal is to identify the keyword set of the most prominent concepts that capture these {item_category} items (especially the highly activated items at the top of the list). "
+        f"Respond only 3-5 concepts with your confidence scores (in the range from 0 to 10) that exactly cover the features of items."
+        f"Basically, consider this task as a classification task. Use consistent terms (avoid synonyms for same concept - e.g do NOT use 'sugary', 'sweet' and 'sweetness' for the same concept) !"   
+        f"Example: 'Luxurious (confidence: 8), High Quality (confidence: 6), Popular (confidence: 0.4)' or 'Cheap price (confidence: 9), Fish (confidence: 7), High Protein (confidence: 5)'."
+        f"Do NOT include <think> or any reasoning. Output only the final labels."                                                                                                                                                                                                           
     )
 
     items_block = "\n".join(item_lines)
@@ -492,8 +509,10 @@ def _clean_label(raw: str) -> str:
     if not lines:
         return "unlabelled"
 
-    label = lines[0].strip().strip("\"'`")
-    return label if label else "unlabelled"
+    # label = lines[0].strip().strip("\"'`")
+    # return label if label else "unlabelled"
+
+    return lines[0].strip().strip("\"'`")
 
 # Evaluate the SAE model
 def evaluate_sae(
