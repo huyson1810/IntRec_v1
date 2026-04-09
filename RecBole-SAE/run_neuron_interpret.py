@@ -130,6 +130,11 @@ def _parse_args() -> argparse.Namespace:
                    help="How many neuron prompts to send per label_batch() call. "
                         "Lower this if you see CUDA OOM (e.g. 16/32/64).")
 
+    p.add_argument("--max_new_tokens", type=int, default=32,
+                   help="Max tokens generated per neuron label. "
+                        "Lower reduces VRAM/latency (recommended 8–32).")
+
+
     p.add_argument("--openai_api_key", default=None)
     p.add_argument("--openai_base_url",default=None)
     p.add_argument("--llm_sleep",      type=float, default=0.0,
@@ -570,8 +575,8 @@ def main() -> None:
     input_dim   = item_embs.shape[1]
     user_embs   = data["representations"]   # [N users, dim]
 
-    dataset_name = "amazon-grocery"
-    # dataset_name = dataset.config["dataset"]
+    # dataset_name = "amazon-grocery"
+    dataset_name = dataset.config["dataset"]
     #data_path    = dataset.config["data_path"]
     logger.info(
         f"Model={model_name} uses={len(user_embs)} items={len(item_embs)}  dim={input_dim}"
@@ -728,6 +733,13 @@ def main() -> None:
         f"Active neurons (≥1 item): {active_neurons}/{n_limit}  "
         f"(dead: {n_limit - active_neurons})"
     )
+    
+    # ── Save Step-4 intermediate (top items per neuron) BEFORE any LLM calls ──
+    top_items_path = os.path.join(args.output_dir, f"{dataset_name}_{run_name}-neuron_top_items.json")
+    with open(top_items_path, "w", encoding="utf-8") as fh:
+        # json keys must be strings for portability
+        json.dump({str(k): v for k, v in neuron_top_items.items()}, fh, indent=2, ensure_ascii=False)
+    logger.info(f"Saved neuron_top_items → {top_items_path}")
 
     # ── Step 5: LLM labelling ─────────────────────────────────────────────
     logger.info("── Step 5: LLM neuron labelling ────────────────")
@@ -765,7 +777,11 @@ def main() -> None:
         sub = all_prompts[i:i+chunk]
         logger.info(f"  LLM chunk {i//chunk + 1} / {((len(all_prompts)-1)//chunk + 1)}  "
                     f"({len(sub)} prompts)")
-        raw_labels.extend(llm.label_batch(sub, max_new_tokens=64))
+        raw_labels.extend(llm.label_batch(sub,args.max_new_tokens)) 
+        
+        # print for debugging
+        print(f"sub_prompts: {sub}")
+        print(f"raw_labels: {raw_labels}")
 
         # help reduce fragmentation / peak usage between chunks
         if torch.cuda.is_available():
