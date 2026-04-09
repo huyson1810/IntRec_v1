@@ -231,7 +231,8 @@ def format_item_for_prompt(
 
     # amazon grocery and gourmet food
     # priority = ["title", "category", "brand", "details", "description", "price", "popularity_rank"]  
-    priority = ["title", "category", "brand", "description", "price", "popularity_rank"]  
+    # priority = ["title", "category", "brand", "description", "price", "popularity_rank"] 
+    priority = ["title", "category", "brand", "price", "popularity_rank"]
     
     parts: List[str] = []
     used = 0
