@@ -435,10 +435,11 @@ def _build_labelling_prompt(
     system = (
         f"You are analysing neurons in a recommendation model that recommends {item_category}. "
         f"Each neuron activates strongly for {item_category} that share a specific common characteristic. "
-        f"Your goal is to identify the keyword set of the most prominent characteristics that connects these {item_category}. "
+        f"Your goal is to identify the keyword set of the most prominent characteristics that connects these {item_category} (especially the highly activated items at the top of the list). "
         f"Respond only a 3-5 word label with your confidence scores (in the range from 0 to 10) based on the highly activated items , no explanation."
-        f"Basically, consider this task as a classification task, and avoid using different synonyms for one concept (e.g 'sweet' and 'sweetness') !"
-        f"Example: 'Luxurious (confidence: 8), Seafood (confidence: 6), Popular (confidence: 0.4)' or 'Seafood (confidence: 9), Fish (confidence: 7), High Protein (confidence: 5)'."   
+        f"Basically, consider this task as a classification task, and use consistent terms to avoid different synonyms for one concept (e.g do not use 'sugary', 'sweet' and 'sweetness' for the same concept) !"   
+        f"Example: 'Luxurious (confidence: 8), High Quality (confidence: 6), Popular (confidence: 0.4)' or 'Cheap price (confidence: 9), Fish (confidence: 7), High Protein (confidence: 5)'. \
+        Do not output <think> blocks or any internal reasoning. Output only the final labels."   
     )
 
     items_block = "\n".join(item_lines)
@@ -816,7 +817,7 @@ def main() -> None:
         # print(f"sub_prompts: {sub}")
         # Lightweight label preview (first few only)
         logger.info(
-            "  labels preview: " + " | ".join(lbl.strip()[:100] for lbl in raw_labels[-min(3, len(sub)):])
+            "  labels preview: " + " | ".join(lbl.strip() for lbl in raw_labels[-min(3, len(sub)):])
         )
 
         # help reduce fragmentation / peak usage between chunks
