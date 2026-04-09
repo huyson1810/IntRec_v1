@@ -388,17 +388,28 @@ class _HuggingFaceBackend(_LLMBackend):
                 # fallback: simple concat
                 prompts.append("\n".join(f"{m['role']}: {m['content']}" for m in msgs))
 
-        # Run the pipeline in batches. The pipeline handles tokenization, padding, and batching internally.
-        outputs = self._pipe(
-            prompts,  # <-- IMPORTANT: pass prompt strings, not the message dicts
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-            return_full_text=False,
-            batch_size=self._hf_batch_size,
-            pad_token_id=tokenizer.pad_token_id,
-        )
+        # IMPORTANT: inference_mode reduces memory vs no_grad for generation workloads
+        with torch.inference_mode():
+            outputs = self._pipe(
+                prompts,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                return_full_text=False,
+                batch_size=self._hf_batch_size,
+                pad_token_id=tokenizer.pad_token_id,
+            )
+
         # outputs: List[ [{"generated_text": "..."}] ]  (one list per prompt)
-        return [out[0]["generated_text"].strip() for out in outputs]
+        texts = [out[0]["generated_text"].strip() for out in outputs]
+
+        # Aggressive cleanup to avoid fragmentation over many iterations
+        del outputs
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
+        return texts
 
 
 class _OpenAIBackend(_LLMBackend):
@@ -454,7 +465,7 @@ def _build_labelling_prompt(
         f"You are analysing neurons in a recommendation model that recommends {item_category}. "
         f"Each neuron activates strongly for {item_category} that share a specific common concept. "
         f"Your goal is to identify the keyword set of the most prominent concepts that capture these {item_category} items (especially the highly activated items at the top of the list). "
-        f"Respond only 3-5 concepts with your confidence scores (in the range from 0 to 10) that exactly cover the features of items."
+        f"Respond only 3-5 concepts with your confidence scores (in the range from 0 to 10) that exactly cover the features of items (brand, category, popular/unpopular, name, expensive/ cheap price, ingredients, etc.)."   
         f"Basically, consider this task as a classification task. Use consistent terms (avoid synonyms for same concept - e.g do NOT use 'sugary', 'sweet' and 'sweetness' for the same concept) !"   
         f"Example: 'Luxurious (confidence: 8), High Quality (confidence: 6), Popular (confidence: 0.4)' or 'Cheap price (confidence: 9), Fish (confidence: 7), High Protein (confidence: 5)'."
         f"Do NOT include <think> or any reasoning. Output only the final labels."                                                                                                                                                                                                           
@@ -818,53 +829,17 @@ def main() -> None:
         all_prompts.append(_build_labelling_prompt(neuron, item_lines, args.item_category))
 
     # logger.info(f"Sending {len(all_prompts)} prompts to LLM in one batched call …")
-    # raw_labels = llm.label_batch(all_prompts, max_new_tokens=32)
     
     # reduce generation length: Change 32 → 8 or 16 to reduce KV-cache growth during decoding.
     # raw_labels = llm.label_batch(all_prompts, max_new_tokens=12)
 
-    logger.info(f"Sending {len(all_prompts)} prompts to LLM …")
-    raw_labels: List[str] = []
-    chunk = max(1, int(args.llm_chunk_size))
 
-    for i in range(0, len(all_prompts), chunk):
-        sub = all_prompts[i:i+chunk]
-        logger.info(f"  LLM chunk {i//chunk + 1} / {((len(all_prompts)-1)//chunk + 1)}  "
-                    f"({len(sub)} prompts)")
-        raw_labels.extend(llm.label_batch(sub,max_new_tokens=args.max_new_tokens)) 
-        
-        # print for debugging
-        # print(f"sub_prompts: {sub}")
-        # Lightweight label preview (first few only)
-        logger.info(
-            "  labels preview: " + " | ".join(lbl.strip() for lbl in raw_labels[-min(3, len(sub)):])
-        )
-
-        # help reduce fragmentation / peak usage between chunks
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-
-    neuron_labels: Dict[int, str] = {}
-    for neuron, raw in zip(ordered_neurons, raw_labels):
-        neuron_labels[neuron] = _clean_label(raw)
-
-    # Log a sample
-    for i, neuron in enumerate(ordered_neurons[:5]):
-        logger.info(f"  neuron {neuron:4d} → \"{neuron_labels[neuron]}\"")
-    if len(ordered_neurons) > 5:
-        logger.info(f"  … ({len(ordered_neurons) - 5} more)")
-
-    # ── Step 6: Assemble and save full JSON ───────────────────────────────
-    logger.info("── Step 6: Saving results ──────────────────────")
-
-    # Summary statistics
+    # ---- Build output skeleton BEFORE labelling so we can save progress ----
     max_act_per_neuron = {
         neuron: round(float(max(e["activation"] for e in items)), 6)
         for neuron, items in neuron_top_items.items()
     }
 
-    # Full output: one entry per active neuron
     output: Dict = {
         "run_name":     run_name,
         "base_model":   model_name,
@@ -875,8 +850,6 @@ def main() -> None:
         "n_items_encoded": int(item_embs.shape[0]),
         "top_k":           top_k,
         "n_active_neurons": active_neurons,
-
-        # Add SAE evaluation metrics
         "sae_metrics": {
             "mse_loss": round(eval_metrics["mse_loss"], 6),
             "l0_norm": round(eval_metrics["l0_norm"], 2),
@@ -891,38 +864,71 @@ def main() -> None:
             "max_activation_freq_pct": round(neuron_coverage["max_activation_freq"], 2),
             "min_activation_freq_pct": round(neuron_coverage["min_activation_freq"], 2),
         },
-
         "neurons": {}
     }
 
-    for neuron in sorted(neuron_top_items.keys()):
+    for neuron in ordered_neurons:
         output["neurons"][str(neuron)] = {
             "neuron_id":      neuron,
-            "label":          neuron_labels.get(neuron, "unlabelled"),
+            "label":          "unlabelled",
             "max_activation": max_act_per_neuron.get(neuron, 0.0),
             "top_items":      neuron_top_items[neuron],
         }
 
-    fname    = args.output_file or f"{run_name}-neurons.json"
+    # Paths
+    fname = args.output_file or f"{run_name}-neurons.json"
     out_path = os.path.join(args.output_dir, fname)
+
+    progress_path = out_path.replace(".json", "-progress.json")
+    progress_labels_path = out_path.replace(".json", "-progress-labels.json")
+
+    # ---- Incremental labelling: no raw_labels list ----
+    logger.info(f"Labelling {len(all_prompts)} neurons incrementally …")
+    neuron_labels: Dict[int, str] = {}
+
+    save_every = 5  # write files every 5 neurons (set to 1 for max safety)
+
+    for idx, (neuron, prompt) in enumerate(zip(ordered_neurons, all_prompts), start=1):
+        logger.info(f"  neuron {idx}/{len(ordered_neurons)} (id={neuron})")
+
+        raw = llm.label_batch([prompt], max_new_tokens=args.max_new_tokens)[0]
+        cleaned = _clean_label(raw)
+
+        neuron_labels[neuron] = cleaned
+        output["neurons"][str(neuron)]["label"] = cleaned
+
+        logger.info(f'    label: "{cleaned[:160]}"')
+
+        # Save progress periodically
+        if (idx % save_every) == 0 or idx == len(ordered_neurons):
+            with open(progress_path, "w", encoding="utf-8") as fh:
+                json.dump(output, fh, indent=2, ensure_ascii=False)
+
+            with open(progress_labels_path, "w", encoding="utf-8") as fh:
+                json.dump({str(k): v for k, v in neuron_labels.items()},
+                          fh, indent=2, ensure_ascii=False)
+
+            logger.info(f"    progress saved → {progress_path}")
+
+        # extra VRAM fragmentation hygiene
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    # ---- Step 6: save final outputs (same filenames as before) ----
+    logger.info("── Step 6: Saving results ──────────────────────")
+
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(output, fh, indent=2, ensure_ascii=False)
 
-    # Also save a compact label-only summary for quick inspection
     summary_path = out_path.replace(".json", "-labels.json")
-    summary = {
-        str(n): v["label"]
-        for n, v in output["neurons"].items()
-        if v["label"] != "unlabelled"
-    }
     with open(summary_path, "w", encoding="utf-8") as fh:
-        json.dump(summary, fh, indent=2, ensure_ascii=False)
+        json.dump({str(k): v for k, v in neuron_labels.items()},
+                  fh, indent=2, ensure_ascii=False)
 
     logger.info(f"Full output   → {out_path}")
     logger.info(f"Label summary → {summary_path}")
-    logger.info(
-        f"Done. Labelled {len(summary)}/{active_neurons} active neurons."
-    )
+    logger.info(f"Done. Labelled {len(neuron_labels)}/{active_neurons} active neurons.")
+
 
     # Print a short preview to console
     print("\n── Neuron label preview (first 20 active neurons) ──────────────")
