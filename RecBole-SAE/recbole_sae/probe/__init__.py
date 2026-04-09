@@ -34,7 +34,7 @@ def get_prober(model_name: str) -> BaseProber:
     return prober
 
 
-def probe_model(checkpoint_path: str) -> Dict:
+def probe_model_0(checkpoint_path: str) -> Dict:
     """
     Load a trained RecBole checkpoint and extract everything the SAE needs.
 
@@ -49,6 +49,82 @@ def probe_model(checkpoint_path: str) -> Dict:
     """
     config, model, dataset, train_data, valid_data, test_data = \
         load_data_and_model(checkpoint_path)
+
+    model_name = config["model"]
+    model.eval()
+
+    prober = get_prober(model_name)
+    user_ids, reps = prober.probe(
+        model=model, dataset=dataset, train_data=train_data
+    )
+
+    return {
+        "model_name":      model_name,
+        "user_ids":        user_ids,
+        "representations": reps.astype("float32"),
+        "item_embeddings": prober.get_item_embeddings(model, dataset).astype("float32"),
+        "item_titles":     prober.get_item_titles(dataset),
+        "user_history":    prober.get_user_history(dataset),
+        "dataset":         dataset,
+        "model":           model,
+        "config":          config,
+        "train_data":      train_data,
+        "valid_data":      valid_data,
+        "test_data":       test_data,
+    }
+
+
+# Fix Fix: add an optional data_path parameter to probe_model() and 
+# forward it to RecBole’s load_data_and_model() by overriding the config’s data_path before dataset creation.
+from typing import Optional
+import os
+
+def probe_model_0(checkpoint_path: str,  data_path: Optional[str] = None) -> Dict:
+    """
+    Load a trained RecBole checkpoint and extract everything the SAE needs.
+
+    If data_path is provided, override RecBole config['data_path'] so the
+    dataset can be found in a different environment (e.g., Kaggle).
+
+    Returns dict with:
+        model_name      : str
+        user_ids        : ndarray [N]
+        representations : ndarray [N, dim]
+        item_embeddings : ndarray [n_items, dim]
+        item_titles     : Dict[int, str]
+        user_history    : Dict[int, List[int]]
+        dataset / model / config / train_data / valid_data / test_data
+    """
+    
+    import torch
+    ckpt = torch.load(checkpoint_path, map_location="cpu")
+
+    # RecBole checkpoints usually store config in ckpt["config"]
+    if data_path is not None:
+        if "config" not in ckpt:
+            raise KeyError("Checkpoint missing 'config'; cannot override data_path.")
+        if not os.path.isdir(data_path):
+            raise ValueError(f"--data_path does not exist or is not a directory: {data_path}")
+
+        # Override
+        ckpt["config"]["data_path"] = data_path
+
+    # Write patched ckpt to a temporary file (so RecBole reads the overridden path)
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".pth", delete=False) as tmp:
+        tmp_path = tmp.name
+    torch.save(ckpt, tmp_path)
+
+    try:
+        config, model, dataset, train_data, valid_data, test_data = load_data_and_model(tmp_path)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+    # config, model, dataset, train_data, valid_data, test_data = \
+    #     load_data_and_model(checkpoint_path)
 
     model_name = config["model"]
     model.eval()
