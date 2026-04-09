@@ -371,6 +371,7 @@ class _HuggingFaceBackend(_LLMBackend):
         The pipeline tokenizes, pads, and processes them together — a single
         forward pass per micro-batch of size self._hf_batch_size.
         """
+        tokenizer = self._pipe.tokenizer
         
         # Convert chat messages -> a single prompt string using the model's chat template (if present)    
         prompts: List[str] = []
@@ -387,14 +388,14 @@ class _HuggingFaceBackend(_LLMBackend):
                 # fallback: simple concat
                 prompts.append("\n".join(f"{m['role']}: {m['content']}" for m in msgs))
 
-        # Run the pipeline in batches. The pipeline handles tokenization, padding, and batching internally.        
+        # Run the pipeline in batches. The pipeline handles tokenization, padding, and batching internally.
         outputs = self._pipe(
-            all_messages,
+            prompts,  # <-- IMPORTANT: pass prompt strings, not the message dicts
             max_new_tokens=max_new_tokens,
             do_sample=False,
             return_full_text=False,
             batch_size=self._hf_batch_size,
-            pad_token_id=self._pipe.tokenizer.pad_token_id,
+            pad_token_id=tokenizer.pad_token_id,
         )
         # outputs: List[ [{"generated_text": "..."}] ]  (one list per prompt)
         return [out[0]["generated_text"].strip() for out in outputs]
