@@ -124,6 +124,12 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--hf_batch_size",  type=int, default=32,
                    help="Number of prompts per HF pipeline forward pass (default 32). "
                         "Increase on high-VRAM GPUs; decrease if OOM.")
+    
+    # Avoid sending all neurons in one giant list (prevents peak memory spikes)
+    p.add_argument("--llm_chunk_size", type=int, default=64,
+                   help="How many neuron prompts to send per label_batch() call. "
+                        "Lower this if you see CUDA OOM (e.g. 16/32/64).")
+
     p.add_argument("--openai_api_key", default=None)
     p.add_argument("--openai_base_url",default=None)
     p.add_argument("--llm_sleep",      type=float, default=0.0,
@@ -219,8 +225,9 @@ def format_item_for_prompt(
                 # "director", "cast", "tags", "categories", "brand"]
 
     # amazon grocery and gourmet food
-    priority = ["title", "category", "brand", "details", "description", "price", "popularity_rank"]  
-
+    # priority = ["title", "category", "brand", "details", "description", "price", "popularity_rank"]  
+    priority = ["title", "category", "brand", "description", "price", "popularity_rank"]  
+    
     parts: List[str] = []
     used = 0
     for field in priority:
@@ -421,11 +428,11 @@ def _build_labelling_prompt(
     """
     system = (
         f"You are analysing neurons in a recommendation model that recommends {item_category}. "
-        f"Each neuron activates strongly for {item_category} that share a hidden common characteristic. "
-        f"Your goal is to identify the keyword set of the most prominent characteristics "
-        f"that connects these {item_category}. "
-        f"Respond only a 3-5 word label with its confidence scores based on the highly activated items , no explanation"
-        f"Example: 'Luxurious (confidence: 0.8), Seafood (confidence: 0.6), Popular (confidence: 0.4)' or 'Seafood (confidence: 0.9), Fish (confidence: 0.7), High Protein (confidence: 0.5)'."   
+        f"Each neuron activates strongly for {item_category} that share a specific common characteristic. "
+        f"Your goal is to identify the keyword set of the most prominent characteristics that connects these {item_category}. "
+        f"Respond only a 3-5 word label with your confidence scores (in the range from 0 to 10) based on the highly activated items , no explanation."
+        f"Basically, consider this task as a classification task, and avoid using different synonyms for one concept (e.g 'sweet' and 'sweetness') !"
+        f"Example: 'Luxurious (confidence: 8), Seafood (confidence: 6), Popular (confidence: 0.4)' or 'Seafood (confidence: 9), Fish (confidence: 7), High Protein (confidence: 5)'."   
     )
 
     items_block = "\n".join(item_lines)
@@ -744,8 +751,26 @@ def main() -> None:
             )
         all_prompts.append(_build_labelling_prompt(neuron, item_lines, args.item_category))
 
-    logger.info(f"Sending {len(all_prompts)} prompts to LLM in one batched call …")
-    raw_labels = llm.label_batch(all_prompts, max_new_tokens=32)
+    # logger.info(f"Sending {len(all_prompts)} prompts to LLM in one batched call …")
+    # raw_labels = llm.label_batch(all_prompts, max_new_tokens=32)
+    
+    # reduce generation length: Change 32 → 8 or 16 to reduce KV-cache growth during decoding.
+    # raw_labels = llm.label_batch(all_prompts, max_new_tokens=12)
+
+    logger.info(f"Sending {len(all_prompts)} prompts to LLM …")
+    raw_labels: List[str] = []
+    chunk = max(1, int(args.llm_chunk_size))
+
+    for i in range(0, len(all_prompts), chunk):
+        sub = all_prompts[i:i+chunk]
+        logger.info(f"  LLM chunk {i//chunk + 1} / {((len(all_prompts)-1)//chunk + 1)}  "
+                    f"({len(sub)} prompts)")
+        raw_labels.extend(llm.label_batch(sub, max_new_tokens=64))
+
+        # help reduce fragmentation / peak usage between chunks
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
 
     neuron_labels: Dict[int, str] = {}
     for neuron, raw in zip(ordered_neurons, raw_labels):
