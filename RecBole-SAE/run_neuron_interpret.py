@@ -111,6 +111,8 @@ def _parse_args() -> argparse.Namespace:
                    help="Skip neurons where max item activation < this threshold")
     p.add_argument("--neuron_limit",    type=int, default=None,
                    help="Only interpret the first N neurons (useful for quick tests)")
+    p.add_argument("--recent_items_per_user", type=int, default=10,
+                   help="How many recent interacted items to include in each user profile (default 10)")
 
     # --- LLM ---
     p.add_argument("--llm_backend",    choices=["huggingface", "openai"],
@@ -279,33 +281,66 @@ def load_sae_from_checkpoint(path: str, device: str = "cpu"):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Item activation computation
+# Item- User activation and reconstruction computation
 # ═══════════════════════════════════════════════════════════════════════════
 
+# @torch.no_grad()
+# def encode_items(
+#     sae_model,
+#     item_embs: np.ndarray,
+#     device:    str = "cpu",
+#     batch:     int = 512,
+# ) -> np.ndarray:
+#     """
+#     Pass item embeddings through the SAE encoder.
+
+#     Returns
+#     -------
+#     item_acts : float32 ndarray [n_items, latent_dim]
+#         Raw (non-discretised) activation values.
+#         Each row has exactly k non-zero entries.
+#     """
+#     sae_model.eval()
+#     parts = []
+#     for s in range(0, len(item_embs), batch):
+#         x   = torch.tensor(item_embs[s:s+batch], dtype=torch.float32).to(device)
+#         act = sae_model.encode(x)
+#         parts.append(act.cpu().numpy())
+#     return np.concatenate(parts, axis=0)   # [n_items, latent_dim]
+
 @torch.no_grad()
-def encode_items(
+def encode_and_decode_items(
     sae_model,
-    item_embs: np.ndarray,
-    device:    str = "cpu",
-    batch:     int = 512,
-) -> np.ndarray:
+    embs: np.ndarray,
+    device: str = "cpu",
+    batch: int = 512,
+) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Pass item embeddings through the SAE encoder.
+    Pass embeddings through SAE encoder and decoder.
 
     Returns
     -------
-    item_acts : float32 ndarray [n_items, latent_dim]
-        Raw (non-discretised) activation values.
-        Each row has exactly k non-zero entries.
+    acts : float32 ndarray [n_embs, latent_dim]
+        Raw activation values.
+    recon : float32 ndarray [n_embs, input_dim]
+        Reconstructed embeddings.
     """
     sae_model.eval()
-    parts = []
-    for s in range(0, len(item_embs), batch):
-        x   = torch.tensor(item_embs[s:s+batch], dtype=torch.float32).to(device)
-        act = sae_model.encode(x)
-        parts.append(act.cpu().numpy())
-    return np.concatenate(parts, axis=0)   # [n_items, latent_dim]
-
+    acts_parts = []
+    recon_parts = []
+    
+    with torch.inference_mode():
+        for s in range(0, len(embs), batch):
+            x = torch.tensor(embs[s:s+batch], dtype=torch.float32).to(device)
+            act = sae_model.encode(x)
+            recon = sae_model.decode(act)
+            acts_parts.append(act.cpu().numpy())
+            recon_parts.append(recon.cpu().numpy())
+            
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    
+    return np.concatenate(acts_parts, axis=0), np.concatenate(recon_parts, axis=0)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # LLM backend
@@ -540,36 +575,134 @@ def _clean_label(raw: str) -> str:
 
     return lines[0].strip().strip("\"'`")
 
-# Evaluate the SAE model
+
+# ----- saving embeddings
+def _save_embeddings_and_activations(
+    output_dir: str,
+    run_name: str,
+    dataset_name: str,
+    item_embs: np.ndarray,
+    user_embs: np.ndarray,
+    item_acts: np.ndarray,
+    user_acts: np.ndarray,
+    item_recon: np.ndarray,
+    user_recon: np.ndarray,
+) -> None:
+    """
+    Save all embeddings, activations, and reconstructions to disk.
+    
+    All arrays are pre-computed; just save them + compute metadata.
+    
+    Saves:
+      - item_embs.npy:        base recommender item embeddings [n_items, dim]
+      - user_embs.npy:        base recommender user embeddings [n_users, dim]
+      - item_acts.npy:        SAE activations for items [n_items, latent_dim]
+      - user_acts.npy:        SAE activations for users [n_users, latent_dim]
+      - item_recon.npy:       SAE reconstructed item embeddings [n_items, dim]
+      - user_recon.npy:       SAE reconstructed user embeddings [n_users, dim]
+      - embeddings_meta.json: summary stats + shapes
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    
+    logger.info("Saving embeddings, activations, and reconstructions …")
+    
+    # Save raw arrays (all pre-computed, just write to disk)
+    np.save(os.path.join(output_dir, f"{dataset_name}_{run_name}-item_embs.npy"), item_embs)
+    np.save(os.path.join(output_dir, f"{dataset_name}_{run_name}-user_embs.npy"), user_embs)
+    np.save(os.path.join(output_dir, f"{dataset_name}_{run_name}-item_acts.npy"), item_acts)
+    np.save(os.path.join(output_dir, f"{dataset_name}_{run_name}-user_acts.npy"), user_acts)
+    np.save(os.path.join(output_dir, f"{dataset_name}_{run_name}-item_recon.npy"), item_recon)
+    np.save(os.path.join(output_dir, f"{dataset_name}_{run_name}-user_recon.npy"), user_recon)
+    
+    # Compute and save metadata
+    def _compute_stats(name: str, x: np.ndarray, recon: np.ndarray = None) -> dict:
+        x = np.asarray(x)
+        stats = {
+            "shape": tuple(x.shape),
+            "dtype": str(x.dtype),
+            "min": float(x.min()),
+            "max": float(x.max()),
+            "mean": float(x.mean()),
+            "std": float(x.std()),
+            "l2_norm_mean": float(np.mean(np.linalg.norm(x, axis=1))),
+            "l2_norm_std": float(np.std(np.linalg.norm(x, axis=1))),
+        }
+        if recon is not None:
+            recon = np.asarray(recon)
+            mse = float(np.mean((x - recon) ** 2))
+            cosine = float(np.mean(
+                np.sum(x * recon, axis=1) / 
+                (np.linalg.norm(x, axis=1) * np.linalg.norm(recon, axis=1) + 1e-12)
+            ))
+            stats["mse_vs_recon"] = mse
+            stats["cosine_sim_vs_recon"] = cosine
+        return stats
+    
+    meta = {
+        "item_embs": _compute_stats("item_embs", item_embs, item_recon),
+        "user_embs": _compute_stats("user_embs", user_embs, user_recon),
+        "item_acts": _compute_stats("item_acts", item_acts),
+        "user_acts": _compute_stats("user_acts", user_acts),
+        "item_recon": _compute_stats("item_recon", item_recon),
+        "user_recon": _compute_stats("user_recon", user_recon),
+    }
+    
+    meta_path = os.path.join(output_dir, f"{dataset_name}_{run_name}-embeddings_meta.json")
+    with open(meta_path, "w") as fh:
+        json.dump(meta, fh, indent=2)
+    
+    logger.info(f"  item_embs   → {os.path.join(output_dir, f'{dataset_name}_{run_name}-item_embs.npy')}")
+    logger.info(f"  user_embs   → {os.path.join(output_dir, f'{dataset_name}_{run_name}-user_embs.npy')}")
+    logger.info(f"  item_acts   → {os.path.join(output_dir, f'{dataset_name}_{run_name}-item_acts.npy')}")
+    logger.info(f"  user_acts   → {os.path.join(output_dir, f'{dataset_name}_{run_name}-user_acts.npy')}")
+    logger.info(f"  item_recon  → {os.path.join(output_dir, f'{dataset_name}_{run_name}-item_recon.npy')}")
+    logger.info(f"  user_recon  → {os.path.join(output_dir, f'{dataset_name}_{run_name}-user_recon.npy')}")
+    logger.info(f"  metadata    → {meta_path}")
+
+
+#--- Evaluate the SAE model
 def evaluate_sae(
     sae_model,
     test_embs: np.ndarray,
+    test_acts: np.ndarray,
+    test_recon: np.ndarray,
     device: str = "cpu",
     batch: int = 512,
 ) -> Dict[str, float]:
     """
-    Evaluate SAE reconstruction quality and sparsity on test embeddings.
+    Evaluate SAE reconstruction quality and sparsity using pre-computed values.
+    
+    Parameters
+    ----------
+    sae_model : RecSAE
+        The trained SAE model (unused, kept for API compatibility)
+    test_embs : np.ndarray
+        Test embeddings [n_test, input_dim]
+    test_acts : np.ndarray
+        Pre-computed activations [n_test, latent_dim]
+    test_recon : np.ndarray
+        Pre-computed reconstructions [n_test, input_dim]
+    device : str
+        Device to use ('cpu' or 'cuda')
+    batch : int
+        Batch size for processing
     
     Returns
     -------
     metrics : dict with keys:
         - mse_loss: mean squared error of reconstruction
         - l0_norm: average number of non-zero activations per sample
-        - cosine_sim: average cosine similarity between input and reconstruction
+        - cosine_similarity: average cosine similarity between input and reconstruction
     """
-    sae_model.eval()
-    
     mse_losses = []
     l0_norms = []
     cosine_sims = []
     
-    with torch.no_grad():
+    with torch.inference_mode():
         for s in range(0, len(test_embs), batch):
             x = torch.tensor(test_embs[s:s+batch], dtype=torch.float32).to(device)
-            
-            # Encode and reconstruct
-            acts = sae_model.encode(x)
-            x_recon = sae_model.decode(acts)
+            acts = torch.tensor(test_acts[s:s+batch], dtype=torch.float32).to(device)
+            x_recon = torch.tensor(test_recon[s:s+batch], dtype=torch.float32).to(device)
             
             # MSE loss
             mse = torch.mean((x - x_recon) ** 2)
@@ -590,7 +723,6 @@ def evaluate_sae(
         "l0_norm": float(np.mean(l0_norms)),
         "cosine_similarity": float(np.mean(cosine_sims)),
     }
-
 
 def analyze_neuron_coverage(item_acts: np.ndarray, latent_dim: int) -> Dict:
     """
@@ -622,6 +754,155 @@ def analyze_neuron_coverage(item_acts: np.ndarray, latent_dim: int) -> Dict:
         "max_activation_freq": float(np.max(freq_per_neuron)),
         "min_activation_freq": float(np.min(freq_per_neuron[freq_per_neuron > 0])) if np.any(freq_per_neuron > 0) else 0.0,
     }
+
+#--- Extract and save user profile for LLM labeling of neurons
+
+def build_user_profile(
+    user_id: int,
+    item_ids: List[int],
+    item_side_info: Dict[int, Dict[str, str]],
+    top_n: int = 10,
+) -> Dict[str, any]:
+    """
+    Build a profile for a user based on their interacted items (in order).
+    
+    Parameters
+    ----------
+    user_id : int
+        User ID
+    item_ids : list
+        List of item IDs the user interacted with (IN TRAIN ORDER, may have duplicates)
+    item_side_info : dict
+        {item_id: {field: value, ...}}
+    top_n : int
+        Number of MOST RECENT items to include in profile (take from end of list)
+    
+    Returns
+    -------
+    profile : dict
+        {
+            "user_id": user_id,
+            "num_interactions": len(item_ids),
+            "recent_items": [
+                {"rank": 1, "item_id": 123, "title": "...", ...},
+                ...  (most recent first)
+            ]
+        }
+    """
+    # Take the LAST top_n items (most recent in train order)
+    # Reverse to show most recent first
+    recent_indices = list(range(max(0, len(item_ids) - top_n), len(item_ids)))[::-1]
+    recent_items = [item_ids[i] for i in recent_indices]
+    
+    items_list = []
+    for rank, item_id in enumerate(recent_items, start=1):
+        side = item_side_info.get(int(item_id), {})
+        entry = {
+            "rank": rank,
+            "item_id": int(item_id),
+        }
+        entry.update(side)
+        items_list.append(entry)
+    
+    return {
+        "user_id": int(user_id),
+        "num_interactions": len(item_ids),
+        "recent_items": items_list,  # changed from sample_items → recent_items
+    }
+
+
+def extract_top_users_per_neuron(
+    user_acts: np.ndarray,
+    latent_dim: int,
+    user_interactions: Dict[int, List[int]],
+    item_side_info: Dict[int, Dict[str, str]],
+    top_k: int = 10,
+    min_activation: float = 0.0,
+    neuron_limit: int = None,
+    recent_items_per_user: int = 10,
+) -> Dict[int, List[Dict]]:
+    """
+    For each neuron, rank users by activation and build their interaction profiles.
+    
+    Parameters
+    ----------
+    user_acts : np.ndarray
+        [n_users, latent_dim] activations
+    latent_dim : int
+        Number of neurons
+    user_interactions : dict
+        {user_id: [item_id_1, item_id_2, ...]}  (in train order)
+    item_side_info : dict
+        {item_id: {field: value, ...}}
+    top_k : int
+        Top-K users per neuron
+    min_activation : float
+        Skip neurons where max user activation < this
+    neuron_limit : int
+        Only process first N neurons
+    recent_items_per_user : int
+        How many recent interacted items to include in user profile (from end of list)
+    
+    Returns
+    -------
+    neuron_top_users : dict
+        {
+            neuron_id: [
+                {
+                    "rank": 1,
+                    "user_id": 42,
+                    "activation": 0.847,
+                    "num_interactions": 25,
+                    "recent_items": [
+                        {"rank": 1, "item_id": 123, "title": "...", ...},  (most recent first)
+                        ...
+                    ]
+                },
+                ...
+            ]
+        }
+    """
+    n_neurons = latent_dim
+    n_limit = neuron_limit if neuron_limit else n_neurons
+    
+    neuron_top_users: Dict[int, List[Dict]] = {}
+    
+    for neuron in range(n_limit):
+        col = user_acts[:, neuron]  # [n_users]
+        max_act = float(col.max())
+        
+        if max_act < min_activation:
+            continue  # dead or near-dead neuron
+        
+        top_indices = np.argsort(col)[::-1][:top_k]  # descending
+        
+        users_for_neuron = []
+        for rank, user_id in enumerate(top_indices, start=1):
+            act_val = float(col[user_id])
+            if act_val <= 0:
+                break  # all remaining are zero (Top-K SAE)
+            
+            # Build user profile from train interactions (in order, not random)
+            item_ids = user_interactions.get(int(user_id), [])
+            profile = build_user_profile(
+                user_id=user_id,
+                item_ids=item_ids,
+                item_side_info=item_side_info,
+                top_n=recent_items_per_user,
+            )
+            
+            # Merge rank and activation into profile
+            entry = {
+                "rank": rank,
+                "activation": round(act_val, 6),
+            }
+            entry.update(profile)
+            users_for_neuron.append(entry)
+        
+        if users_for_neuron:
+            neuron_top_users[neuron] = users_for_neuron
+    
+    return neuron_top_users 
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -744,21 +1025,34 @@ def main() -> None:
     latent_dim = sae_model.latent_dim
     logger.info(f"SAE latent_dim={latent_dim}  k={sae_model.k}")
 
-    # ── Step 3: Encode item embeddings through SAE ────────────────────────
-    logger.info("── Step 3: Encoding item embeddings through SAE ─")
-    item_acts = encode_items(sae_model, item_embs, device=device)
+    # ── Step 3: Encode & decode embeddings through SAE:
+    logger.info("── Step 3: Encoding & decoding item/user embeddings through SAE ─")
+    # item_acts = encode_items(sae_model, item_embs, device=device)
+
+    item_acts, item_recon = encode_and_decode_items(sae_model, item_embs, device=device)
+    user_acts, user_recon = encode_and_decode_items(sae_model, user_embs, device=device)
     # item_acts : [n_items, latent_dim]  raw float32 activations
+    # item_recon: [n_items, input_dim]   reconstructed embeddings
+    # user_acts : [n_users, latent_dim]  raw float32 activations
+    # user_recon: [n_users, input_dim]   reconstructed embeddings
 
     logger.info(
         f"item_acts shape={item_acts.shape}  "
         f"non-zero={float((item_acts > 0).mean())*100:.1f}%"
     )
+    logger.info(
+        f"user_acts shape={user_acts.shape}  "
+        f"non-zero={float((user_acts > 0).mean())*100:.1f}%"
+    )
 
-    # ── Step 3.5: Evaluate SAE performance ──────────────────────────────
+    # ── Step 3.5: Evaluate SAE performance 
     logger.info("── Step 3.5: Evaluating SAE ───────────────────")
-    eval_metrics = evaluate_sae(sae_model, item_embs, device=device)
+    eval_metrics = evaluate_sae(
+        sae_model, item_embs, item_acts, item_recon, device=device
+    )
     neuron_coverage = analyze_neuron_coverage(item_acts, latent_dim)
     
+    logger.info(f"Evaluation at ITEM-side:")
     logger.info(f"Reconstruction MSE: {eval_metrics['mse_loss']:.6f}")
     logger.info(f"Avg sparsity (L0): {eval_metrics['l0_norm']:.2f} / {latent_dim}")
     logger.info(f"Cosine similarity: {eval_metrics['cosine_similarity']:.4f}")
@@ -767,8 +1061,36 @@ def main() -> None:
     logger.info(f"Neuron activation frequency: {neuron_coverage['mean_activation_freq']:.2f}% "
                 f"(min={neuron_coverage['min_activation_freq']:.2f}%, "
                 f"max={neuron_coverage['max_activation_freq']:.2f}%)")
-    
 
+    eval_metrics_user = evaluate_sae(
+        sae_model, user_embs, user_acts, user_recon, device=device
+    )
+    neuron_coverage_user = analyze_neuron_coverage(user_acts, latent_dim)
+    
+    logger.info(f"Evaluation at USER-side:")
+    logger.info(f"Reconstruction MSE: {eval_metrics_user['mse_loss']:.6f}")
+    logger.info(f"Avg sparsity (L0): {eval_metrics_user['l0_norm']:.2f} / {latent_dim}")
+    logger.info(f"Cosine similarity: {eval_metrics_user['cosine_similarity']:.4f}")
+    logger.info(f"Active neurons: {neuron_coverage_user['active_neurons']}/{latent_dim} "
+                f"({neuron_coverage_user['neuron_utilization']:.1f}%)")
+    logger.info(f"Neuron activation frequency: {neuron_coverage_user['mean_activation_freq']:.2f}% "
+                f"(min={neuron_coverage_user['min_activation_freq']:.2f}%, "
+                f"max={neuron_coverage_user['max_activation_freq']:.2f}%)")
+
+
+    # ── Step 3.6: Save all embeddings/activations/reconstructions ──
+    logger.info("── Step 3.6: Saving embeddings & activations ───")
+    _save_embeddings_and_activations(
+        output_dir=args.output_dir,
+        run_name=run_name,
+        dataset_name=dataset_name,
+        item_embs=item_embs,
+        user_embs=user_embs,
+        item_acts=item_acts,
+        user_acts=user_acts,
+        item_recon=item_recon,
+        user_recon=user_recon,
+    )
 
     # ── Step 4: Build per-neuron top-K item list ──────────────────────────
     logger.info("── Step 4: Ranking top items per neuron ────────")
@@ -820,6 +1142,43 @@ def main() -> None:
         json.dump({str(k): v for k, v in neuron_top_items.items()}, fh, indent=2, ensure_ascii=False)
     logger.info(f"Saved neuron_top_items → {top_items_path}")
 
+
+    # ── Step 4a: Extract user-item interactions from TRAIN set ────────────
+    logger.info("── Step 4a: Loading user-item interactions (TRAIN set) ────")
+    # user_history is already extracted from probe_model() — it's from the training set
+    user_interactions = data["user_history"]  # Dict[int, List[int]]
+    logger.info(f"Loaded interactions for {len(user_interactions)} users from training data")
+
+    # Log some stats
+    if user_interactions:
+        interaction_counts = [len(v) for v in user_interactions.values()]
+        # logger.info(f"Avg interactions per user: {np.mean(interaction_counts):.1f}")
+        logger.info(f"Max/ Min/ Mean interactions per user: {np.max(interaction_counts)} / {np.min(interaction_counts)} / {np.mean(interaction_counts):.4f}")
+
+    # ── Step 4b: Build per-neuron top-K user list ──────────────────────────
+    logger.info("── Step 4b: Ranking top users per neuron")
+    neuron_top_users = extract_top_users_per_neuron(
+        user_acts=user_acts,
+        latent_dim=latent_dim,
+        user_interactions=user_interactions,
+        item_side_info=item_side_info,
+        top_k=args.top_k,
+        min_activation=args.min_activation,
+        neuron_limit=args.neuron_limit,
+        recent_items_per_user=args.recent_items_per_user,
+    )
+    
+    logger.info(
+        f"Active neurons (user-side): {len(neuron_top_users)}/{n_limit}  "
+        f"(dead: {n_limit - len(neuron_top_users)})"
+    )
+    
+    # ── Save Step-4b intermediate (top users per neuron) ──
+    top_users_path = os.path.join(args.output_dir, f"{dataset_name}_{run_name}-neuron_top_users.json")
+    with open(top_users_path, "w", encoding="utf-8") as fh:
+        json.dump({str(k): v for k, v in neuron_top_users.items()}, fh, indent=2, ensure_ascii=False)
+    logger.info(f"Saved neuron_top_users → {top_users_path}")
+
     # ── Step 5: LLM labelling ─────────────────────────────────────────────
     logger.info("── Step 5: LLM neuron labelling ────────────────")
     llm = _make_llm(args)
@@ -864,12 +1223,12 @@ def main() -> None:
         "n_items_encoded": int(item_embs.shape[0]),
         "top_k":           top_k,
         "n_active_neurons": active_neurons,
-        "sae_metrics": {
+        "sae_metrics_item_side": {
             "mse_loss": round(eval_metrics["mse_loss"], 6),
             "l0_norm": round(eval_metrics["l0_norm"], 2),
             "cosine_similarity": round(eval_metrics["cosine_similarity"], 4),
         },
-        "neuron_coverage": {
+        "neuron_coverage_item_side": {
             "active_neurons": neuron_coverage["active_neurons"],
             "dead_neurons": neuron_coverage["dead_neurons"],
             "neuron_utilization_pct": round(neuron_coverage["neuron_utilization"], 2),
@@ -877,6 +1236,20 @@ def main() -> None:
             "mean_activation_freq_pct": round(neuron_coverage["mean_activation_freq"], 2),
             "max_activation_freq_pct": round(neuron_coverage["max_activation_freq"], 2),
             "min_activation_freq_pct": round(neuron_coverage["min_activation_freq"], 2),
+        },
+        "sae_metrics_user_side": {
+            "mse_loss": round(eval_metrics_user["mse_loss"], 6),
+            "l0_norm": round(eval_metrics_user["l0_norm"], 2),
+            "cosine_similarity": round(eval_metrics_user["cosine_similarity"], 4),
+        },
+        "neuron_coverage_user_side": {
+            "active_neurons": neuron_coverage_user["active_neurons"],
+            "dead_neurons": neuron_coverage_user["dead_neurons"],
+            "neuron_utilization_pct": round(neuron_coverage_user["neuron_utilization"], 2),
+            "mean_max_activation": round(neuron_coverage_user["mean_max_activation"], 4),
+            "mean_activation_freq_pct": round(neuron_coverage_user["mean_activation_freq"], 2),
+            "max_activation_freq_pct": round(neuron_coverage_user["max_activation_freq"], 2),
+            "min_activation_freq_pct": round(neuron_coverage_user["min_activation_freq"], 2),
         },
         "neurons": {}
     }
